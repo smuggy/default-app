@@ -1,0 +1,69 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'org.springframework.boot' version '3.2.4'
+}
+
+group = 'net.podspace'
+
+repositories {
+    mavenCentral()
+}
+
+application {
+    mainClass = 'net.podspace.app.Application'
+}
+
+tasks.register("copyTarToDockerDir", Copy) {
+    from layout.buildDirectory.dir("distributions")
+    include "**/*.tar"
+    into layout.buildDirectory.dir("docker")
+}
+
+tasks.register("prepareDockerDir", Copy) {
+    from layout.projectDirectory.dir("src/main/docker")
+    include "**/*"
+    filter { it.replaceAll('__app_version__', project.version) }
+    into layout.buildDirectory.dir("docker")
+}
+
+tasks.register("buildDockerImage", Exec) {
+    workingDir layout.getBuildDirectory()
+    commandLine "docker", "build", "--build-arg", "APP_VERSION=${project.version}", "--tag", "${project.name}:${project.version}", "docker"
+}
+
+tasks.register("tagDockerImage", Exec) {
+    workingDir layout.getBuildDirectory()
+    commandLine "docker", "image", "tag", "${project.name}:${project.version}", "mmckernan/${project.name}:${project.version}"
+}
+
+tasks.register("pushDockerImage", Exec) {
+    commandLine "docker", "push", "mmckernan/${project.name}:${project.version}"
+}
+
+copyTarToDockerDir.dependsOn build
+buildDockerImage.dependsOn prepareDockerDir
+buildDockerImage.dependsOn copyTarToDockerDir
+tagDockerImage.dependsOn buildDockerImage
+pushDockerImage.dependsOn tagDockerImage
+
+dependencies {
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+    implementation 'org.apache.logging.log4j:log4j-core:2.22.0'
+    implementation 'org.apache.logging.log4j:log4j-layout-template-json:2.22.0'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator:3.2.4'
+    implementation 'org.springframework.boot:spring-boot-starter-log4j2:3.2.4'
+    implementation 'org.springframework.boot:spring-boot-starter-web:3.2.4'
+    testImplementation platform('org.junit:junit-bom:5.9.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test:3.2.4'
+}
+
+configurations.implementation {
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+}
+
+test {
+    useJUnitPlatform()
+}
